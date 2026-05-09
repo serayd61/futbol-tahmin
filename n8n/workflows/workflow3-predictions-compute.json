@@ -1,0 +1,221 @@
+{
+  "name": "3 — predictions-compute",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ce558582-6cd7-4600-9130-ef328e155e03",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "95512dd2-f2f9-46f4-af48-7e810215bc6a",
+      "name": "Schedule 05:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/fixtures?select=id,league_id,utc_date,home_team_id,away_team_id,status&status=eq.SCHEDULED&utc_date=gte.{{ $now.toUTC().toISO() }}&utc_date=lte.{{ $now.plus({days: 7}).toUTC().toISO() }}&order=utc_date.asc&limit=2000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9e2036e7-f274-48d5-b1ad-3b3935da6dc6",
+      "name": "Get Upcoming Fixtures",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/team_stats?select=*&limit=10000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "32f172e9-9294-4aab-a679-24950a471044",
+      "name": "Get Team Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Poisson tahmin motoru\n// Girdi 1: 'Get Upcoming Fixtures' düğümünden — gelecek SCHEDULED maçlar (array)\n// Girdi 2: 'Get Team Stats' düğümünden — tüm team_stats (array)\n\n// Aynı sorun: array açılmış olabilir (N item) veya tek item olabilir\nfunction readAll(nodeName) {\n  const items = $(nodeName).all();\n  if (items.length === 1 && Array.isArray(items[0].json)) return items[0].json;\n  return items.map(i => i.json);\n}\nconst fixtures  = readAll('Get Upcoming Fixtures');\nconst teamStats = readAll('Get Team Stats');\n\nconst statsMap = new Map(teamStats.map(s => [s.team_id, s]));\n\n// Lig başına ortalamalar (normalizasyon için)\nconst leagueAggs = new Map();\nfor (const s of teamStats) {\n  if (!leagueAggs.has(s.league_id)) leagueAggs.set(s.league_id, { scored: 0, conceded: 0, count: 0 });\n  const a = leagueAggs.get(s.league_id);\n  a.scored   += Number(s.goals_scored_avg)   || 0;\n  a.conceded += Number(s.goals_conceded_avg) || 0;\n  a.count++;\n}\n\nconst factorial = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };\nconst poisson   = (k, lam) => Math.exp(-lam) * Math.pow(lam, k) / factorial(k);\n\nconst formPts = form => {\n  if (!form) return 2.5;\n  let pts = 0;\n  for (const c of form) pts += (c === 'W' ? 1 : c === 'D' ? 0.5 : 0);\n  return pts;\n};\n\nconst out = [];\nconst now = new Date().toISOString();\n\nfor (const m of fixtures) {\n  const h = statsMap.get(m.home_team_id);\n  const a = statsMap.get(m.away_team_id);\n  if (!h || !a) continue;\n\n  const agg = leagueAggs.get(m.league_id);\n  if (!agg || agg.count === 0) continue;\n  const leagueAvg = agg.scored / agg.count;\n  if (leagueAvg <= 0) continue;\n\n  const homeAttack  = (Number(h.home_scored_avg)   || 0) / leagueAvg;\n  const homeDefense = (Number(h.home_conceded_avg) || 0) / leagueAvg;\n  const awayAttack  = (Number(a.away_scored_avg)   || 0) / leagueAvg;\n  const awayDefense = (Number(a.away_conceded_avg) || 0) / leagueAvg;\n\n  let xgH = homeAttack * awayDefense * leagueAvg;\n  let xgA = awayAttack * homeDefense * leagueAvg;\n\n  // Form çarpanı (0.85 .. 1.15 arası)\n  xgH *= 0.85 + 0.06 * formPts(h.form);\n  xgA *= 0.85 + 0.06 * formPts(a.form);\n\n  // Güvenlik klempleri\n  xgH = Math.min(Math.max(xgH, 0.1), 5);\n  xgA = Math.min(Math.max(xgA, 0.1), 5);\n\n  // 0..6 gol için olasılık matrisi\n  const N = 7;\n  const ph = [], pa = [];\n  for (let k = 0; k < N; k++) { ph.push(poisson(k, xgH)); pa.push(poisson(k, xgA)); }\n\n  let pHome = 0, pDraw = 0, pAway = 0, pOver = 0;\n  let bestP = -1, bestH = 0, bestA = 0;\n  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {\n    const p = ph[i] * pa[j];\n    if (i > j) pHome += p;\n    else if (i < j) pAway += p;\n    else pDraw += p;\n    if (i + j >= 3) pOver += p;\n    if (p > bestP) { bestP = p; bestH = i; bestA = j; }\n  }\n\n  const sum = pHome + pDraw + pAway || 1;\n  pHome /= sum; pDraw /= sum; pAway /= sum;\n\n  const top = Math.max(pHome, pDraw, pAway);\n  const confidence = top >= 0.55 ? 'high' : top >= 0.45 ? 'medium' : 'low';\n\n  out.push({\n    fixture_id: m.id,\n    prob_home_win:       +pHome.toFixed(3),\n    prob_draw:           +pDraw.toFixed(3),\n    prob_away_win:       +pAway.toFixed(3),\n    predicted_score:     bestH + '-' + bestA,\n    expected_goals_home: +xgH.toFixed(2),\n    expected_goals_away: +xgA.toFixed(2),\n    prob_over_25:        +pOver.toFixed(3),\n    prob_under_25:       +(1 - pOver).toFixed(3),\n    confidence,\n    model_version: 'poisson-v1',\n    computed_at: now\n  });\n}\n\nreturn [{ json: { predictions: out, count: out.length } }];\n"
+      },
+      "id": "a34b0b3e-cb2d-486d-9fa8-9823311d8913",
+      "name": "Poisson Predict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/predictions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.predictions }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a485cffa-e8c9-4c6a-9b1a-1bac50425bc2",
+      "name": "Upsert Predictions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        280
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Upcoming Fixtures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule 05:00": {
+      "main": [
+        [
+          {
+            "node": "Get Upcoming Fixtures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Upcoming Fixtures": {
+      "main": [
+        [
+          {
+            "node": "Get Team Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Team Stats": {
+      "main": [
+        [
+          {
+            "node": "Poisson Predict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poisson Predict": {
+      "main": [
+        [
+          {
+            "node": "Upsert Predictions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "578bbfbf-2128-4bcc-9654-78c45af8f41a",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "futbol-tahmin"
+    }
+  ]
+}

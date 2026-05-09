@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: futboltahmin-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # --- n8n core ---
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Istanbul
+      - TZ=Europe/Istanbul
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # workflow JS düğümlerinin .env'e erişmesi için
+
+      # --- panel girişi (kendi şifreni .env'de değiştir) ---
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+
+      # --- workflow'ların kullanacağı API anahtarları ---
+      - FOOTBALL_DATA_API_KEY=${FOOTBALL_DATA_API_KEY}
+      - APIFOOTBALL_DIRECT_KEY=${APIFOOTBALL_DIRECT_KEY}
+      - RAPIDAPI_KEY=${RAPIDAPI_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+
+    volumes:
+      # Workflow'lar, credentials ve veritabanı kalıcı olarak burada durur.
+      # Bu klasörü asla GitHub'a pushlama (.gitignore'da var).
+      - ./data:/home/node/.n8n

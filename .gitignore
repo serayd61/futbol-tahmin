@@ -1,0 +1,38 @@
+# --- Bağımlılıklar ---
+node_modules/
+.expo/
+dist/
+build/
+
+# --- Ortam dosyaları (KEYS — asla pushlanmaz) ---
+.env
+.env.local
+.env.*.local
+n8n/.env
+
+# --- n8n çalışma verisi ---
+n8n/data/
+
+# --- iOS / Android native build çıktıları ---
+ios/
+android/
+*.xcworkspace
+*.xcodeproj
+
+# --- Sistem ---
+.DS_Store
+Thumbs.db
+
+# --- Editör ---
+.vscode/
+.idea/
+*.swp
+
+# --- Loglar ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- EAS / Expo ---
+.easignore
