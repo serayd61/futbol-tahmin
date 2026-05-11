@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Destek — Futbol Tahmini</title>
+<style>
+  :root {
+    --bg: #0B1220;
+    --card: #111827;
+    --border: #1F2937;
+    --text: #E5E7EB;
+    --muted: #9CA3AF;
+    --accent: #16A34A;
+    --accent-2: #22D3EE;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+  .back { color: var(--accent-2); text-decoration: none; font-size: 14px; }
+  .back:hover { text-decoration: underline; }
+  h1 { font-size: 32px; margin: 24px 0 8px; }
+  .subtitle { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+  h2 { font-size: 22px; margin-top: 36px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--accent-2); }
+  h3 { font-size: 17px; margin-top: 24px; color: var(--text); }
+  p, li { color: var(--text); }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent-2); }
+  .contact-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 32px 0;
+    text-align: center;
+  }
+  .contact-card a {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 12px 24px;
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 48px 0 24px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<a href="index.html" class="back">&larr; Ana sayfa</a>
+
+<h1>Destek</h1>
+<p class="subtitle">Futbol Tahmini hakkında sıkça sorulan sorular ve iletişim.</p>
+
+<div class="contact-card">
+  <p style="margin: 0 0 8px;">Sorunuz mu var?</p>
+  <a href="mailto:serayd6161@gmail.com?subject=Futbol%20Tahmini%20Destek">E-posta gönder</a>
+  <p style="margin: 12px 0 0; color: var(--muted); font-size: 13px;">Genellikle 24-48 saat içinde yanıtlıyoruz.</p>
+</div>
+
+<h2>Sıkça Sorulan Sorular</h2>
+
+<h3>Tahminler nasıl hesaplanıyor?</h3>
+<p>Maç tahminleri <strong>Poisson dağılımı</strong> modeliyle hesaplanır. Her takımın son maçlardaki atılan-yenen gol ortalamaları, form puanı ve Bayesian shrinkage uygulanarak beklenen gol değeri (xG) çıkarılır. Bu değerlerden 1X2 (ev-beraberlik-deplasman), karşılıklı gol ve skor olasılıkları hesaplanır.</p>
+
+<h3>Bu bir bahis uygulaması mı?</h3>
+<p><strong>Hayır.</strong> Futbol Tahmini yalnızca istatistiksel analiz sunar. Hiçbir bahis bağlantısı, oran bilgisi, kumar veya gerçek-para işlemi içermez. Sadece eğitim ve bilgilendirme amaçlıdır.</p>
+
+<h3>Tahminler ne kadar doğru?</h3>
+<p>İstatistik sekmesinde modelin geçmiş performansını şeffafça görebilirsiniz. Genel olarak Poisson modeli profesyonel ligler için %50-60 doğruluk oranında çalışır, ancak sürprizler de olabilir.</p>
+
+<h3>Hangi ligler destekleniyor?</h3>
+<p>Şu an aktif: Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Eredivisie, Primeira Liga, Brasileirão, Süper Lig (Süper Lig için veri henüz sınırlı). Yeni ligler periyodik olarak eklenir.</p>
+
+<h3>Bildirimleri nasıl açarım/kapatırım?</h3>
+<p><strong>Açmak için:</strong> Uygulamayı ilk açtığınızda bildirim izni vermeniz ve Ayarlar sekmesinden en az bir favori takım eklemeniz yeterli. Favori takımınızın maçı başlamadan ~1 saat önce bildirim alırsınız.</p>
+<p><strong>Kapatmak için:</strong> Tüm favori takımları kaldırın veya iOS Ayarlar → Bildirimler → Futbol Tahmini → Bildirimlere İzin Ver'i kapatın.</p>
+
+<h3>Favori takım kaydımı nasıl temizlerim?</h3>
+<p>Ayarlar sekmesinden favori takımları teker teker kaldırabilirsiniz. Tümünü silmek isterseniz uygulamayı yeniden yüklemeniz, hem cihazınızdaki hem sunucudaki verileri temizler.</p>
+
+<h3>AI maç yorumları nasıl üretiliyor?</h3>
+<p>Maç yorumları Google Gemini AI modeli ile maç istatistiklerinden otomatik üretilir. Her gün periyodik olarak güncellenir. Bu yorumlar bilgilendirme amaçlıdır, tahmin garantisi vermez.</p>
+
+<h3>Uygulamayı destekleyebilir miyim?</h3>
+<p>Şu an uygulama tamamen ücretsiz ve reklamsızdır. İlerleyen sürümlerde isteğe bağlı Premium özellikler eklenebilir, mevcut özellikler her zaman ücretsiz kalacaktır.</p>
+
+<h3>Hata buldum veya öneri vermek istiyorum.</h3>
+<p>E-posta ile iletişime geçebilirsiniz: <a href="mailto:serayd6161@gmail.com">serayd6161@gmail.com</a>. Geri bildiriminiz çok değerli — uygulamayı sürekli geliştiriyoruz.</p>
+
+<hr />
+
+<h2 id="en-support">English Support</h2>
+
+<h3>How are predictions calculated?</h3>
+<p>Match predictions use a <strong>Poisson distribution</strong> model. Each team's recent goals-scored / goals-conceded averages, form score, and Bayesian shrinkage produce an expected goals (xG) value. These values yield probabilities for 1X2 (home-draw-away), both teams to score, and exact score outcomes.</p>
+
+<h3>Is this a betting app?</h3>
+<p><strong>No.</strong> Futbol Tahmini provides statistical analysis only. It contains no betting links, no odds, no gambling, and no real-money transactions. For educational and informational use only.</p>
+
+<h3>How accurate are predictions?</h3>
+<p>You can view the model's historical performance transparently in the Statistics tab. Generally, the Poisson model achieves 50-60% accuracy across professional leagues, though upsets do happen.</p>
+
+<h3>Which leagues are supported?</h3>
+<p>Currently active: Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Eredivisie, Primeira Liga, Brasileirão, Süper Lig (Süper Lig data is currently limited).</p>
+
+<h3>How do I enable/disable notifications?</h3>
+<p><strong>To enable:</strong> Grant notification permission on first launch and add at least one favorite team in the Settings tab. You'll receive a notification ~1 hour before your favorite team's match begins.</p>
+<p><strong>To disable:</strong> Remove all favorite teams, or disable notifications via iOS Settings → Notifications → Futbol Tahmini.</p>
+
+<h3>Found a bug or have a suggestion?</h3>
+<p>Email us at <a href="mailto:serayd6161@gmail.com">serayd6161@gmail.com</a>. Your feedback helps us improve.</p>
+
+<p style="margin-top: 48px; color: var(--muted); font-size: 13px; text-align: center;">&copy; 2026 Serkan Aydın</p>
+
+</div>
+</body>
+</html>

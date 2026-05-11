@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gizlilik Politikası — Futbol Tahmini</title>
+<style>
+  :root {
+    --bg: #0B1220;
+    --card: #111827;
+    --border: #1F2937;
+    --text: #E5E7EB;
+    --muted: #9CA3AF;
+    --accent: #16A34A;
+    --accent-2: #22D3EE;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+  .back { color: var(--accent-2); text-decoration: none; font-size: 14px; }
+  .back:hover { text-decoration: underline; }
+  h1 { font-size: 32px; margin: 24px 0 8px; }
+  .updated { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  h2 { font-size: 22px; margin-top: 36px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--accent-2); }
+  h3 { font-size: 17px; margin-top: 24px; }
+  p, li { color: var(--text); }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: var(--card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--accent-2);
+  }
+  a { color: var(--accent-2); }
+  .lang-toggle {
+    text-align: right;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .lang-toggle a { margin-left: 12px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 48px 0 24px; }
+  .footer-note { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="lang-toggle">
+  <a href="#tr">Türkçe</a>
+  <a href="#en">English</a>
+</div>
+
+<a href="index.html" class="back">&larr; Ana sayfa</a>
+
+<h1 id="tr">Gizlilik Politikası</h1>
+<p class="updated">Son güncelleme: 11 Mayıs 2026</p>
+
+<p>Futbol Tahmini ("uygulama"), kullanıcı gizliliğine değer verir. Bu politika, uygulamayı kullandığınızda hangi verileri topladığımızı, nasıl kullandığımızı ve haklarınızı açıklar.</p>
+
+<h2>1. Topladığımız Veriler</h2>
+
+<h3>1.1 Push Bildirim Tokeni</h3>
+<p>Favori takımlarınızın maçları başlamadan önce size bildirim gönderebilmek için Expo Push Notification Token'ı (cihaza özel, anonim bir tanımlayıcı) sunucumuzda saklarız. Bu token kişisel kimliğinizi içermez.</p>
+
+<h3>1.2 Favori Takım Tercihleri</h3>
+<p>Seçtiğiniz favori takım listesi cihazınızda yerel olarak (AsyncStorage) ve token'ınızla birlikte sunucumuzda saklanır. Bu liste kişisel bilgi içermez.</p>
+
+<h3>1.3 Topladığımız Verilerin Tamamı</h3>
+<p>Yukarıdakiler dışında <strong>hiçbir kişisel veri toplamayız</strong>:</p>
+<ul>
+  <li>Ad, soyad, e-posta veya telefon</li>
+  <li>Konum bilgisi</li>
+  <li>Yaş, cinsiyet veya demografik bilgi</li>
+  <li>Cihaz tanımlayıcıları (IDFA, reklam ID'si)</li>
+  <li>Kullanım analitiği (uygulama içi davranış izleme)</li>
+  <li>Çökme raporları (crash reporting)</li>
+  <li>Ödeme bilgisi (uygulamada satın alma yoktur)</li>
+</ul>
+
+<h2>2. Üçüncü Taraf Hizmetler</h2>
+
+<p>Uygulama, aşağıdaki üçüncü taraf hizmetlerden veri çeker veya bunlara veri gönderir:</p>
+
+<ul>
+  <li><strong>Football-Data.org</strong> — maç fikstürü ve sonuç verileri (sadece veri çekeriz, hiçbir kullanıcı verisi gönderilmez).</li>
+  <li><strong>api-sports.io</strong> — takım istatistikleri (sadece veri çekeriz).</li>
+  <li><strong>Google Gemini</strong> — maç yorumları üretmek için kullanılır. Sadece maç verisi (takım adları, skorlar) gönderilir, kişisel veri gönderilmez.</li>
+  <li><strong>Supabase</strong> — push tokenları ve favori takım tercihlerini güvenli şekilde saklayan veritabanı sağlayıcımız. Sunucular AB ve ABD'de bulunur.</li>
+  <li><strong>Expo Push Service</strong> — push bildirimlerinin telefonunuza iletilmesini sağlar. Sadece token kullanılır.</li>
+</ul>
+
+<h2>3. Veri Saklama Süresi</h2>
+
+<p>Push token ve favori takım tercihleri, uygulamayı silene veya bildirimleri devre dışı bırakana kadar saklanır. Uygulama silindiğinde, push token'ı 30 gün içinde sistemden temizlenir.</p>
+
+<h2>4. Haklarınız</h2>
+
+<ul>
+  <li><strong>Bildirimleri kapatma:</strong> Uygulama içinde Ayarlar → Bildirimler bölümünden veya iOS Ayarlar → Bildirimler → Futbol Tahmini bölümünden kapatabilirsiniz.</li>
+  <li><strong>Verilerinizi silme:</strong> Uygulamayı cihazınızdan silmek, sunucuda saklanan tüm verilerinizi otomatik olarak temizlemek için yeterlidir. İstemeniz halinde manuel silme talebi için bize yazabilirsiniz.</li>
+  <li><strong>Veri erişimi:</strong> Hakkınızda sakladığımız tüm veriyi e-posta ile talep edebilirsiniz.</li>
+</ul>
+
+<h2>5. Çocukların Gizliliği</h2>
+
+<p>Uygulama 4+ yaş kategorisinde olmasına rağmen, 13 yaş altı çocuklardan bilerek veri toplamayız. Bir çocuğun verilerinin saklandığını fark edersek derhal sileriz.</p>
+
+<h2>6. Politika Değişiklikleri</h2>
+
+<p>Bu politikayı zaman zaman güncelleyebiliriz. Önemli değişiklikler olduğunda uygulama içinde bilgilendiririz.</p>
+
+<h2>7. İletişim</h2>
+
+<p>Sorularınız veya talepleriniz için: <a href="mailto:serayd6161@gmail.com">serayd6161@gmail.com</a></p>
+
+<hr />
+
+<h1 id="en">Privacy Policy</h1>
+<p class="updated">Last updated: May 11, 2026</p>
+
+<p>Futbol Tahmini ("the app") respects user privacy. This policy explains what data we collect when you use the app, how we use it, and your rights.</p>
+
+<h2>1. Data We Collect</h2>
+
+<h3>1.1 Push Notification Token</h3>
+<p>To send you notifications before your favorite teams' matches begin, we store an Expo Push Notification Token (a device-specific, anonymous identifier) on our server. This token does not contain personal identity.</p>
+
+<h3>1.2 Favorite Team Preferences</h3>
+<p>The list of favorite teams you select is stored locally on your device (AsyncStorage) and on our server alongside your token. This list contains no personal information.</p>
+
+<h3>1.3 Data We Do NOT Collect</h3>
+<ul>
+  <li>Name, email, or phone number</li>
+  <li>Location data</li>
+  <li>Age, gender, or demographic information</li>
+  <li>Device identifiers (IDFA, advertising IDs)</li>
+  <li>Usage analytics (in-app behavior tracking)</li>
+  <li>Crash reports</li>
+  <li>Payment information (no in-app purchases)</li>
+</ul>
+
+<h2>2. Third-Party Services</h2>
+
+<ul>
+  <li><strong>Football-Data.org</strong> — match fixtures and results (we only fetch data; no user data sent).</li>
+  <li><strong>api-sports.io</strong> — team statistics (we only fetch data).</li>
+  <li><strong>Google Gemini</strong> — generates match commentary. Only match data (team names, scores) is sent; no personal data.</li>
+  <li><strong>Supabase</strong> — our database provider securely storing push tokens and favorite team preferences. Servers located in EU and US.</li>
+  <li><strong>Expo Push Service</strong> — delivers push notifications to your device. Only the token is used.</li>
+</ul>
+
+<h2>3. Data Retention</h2>
+
+<p>Push tokens and favorite team preferences are retained until you delete the app or disable notifications. When the app is deleted, the push token is cleaned up from our system within 30 days.</p>
+
+<h2>4. Your Rights</h2>
+
+<ul>
+  <li><strong>Disable notifications:</strong> In-app Settings → Notifications, or iOS Settings → Notifications → Futbol Tahmini.</li>
+  <li><strong>Delete your data:</strong> Removing the app from your device automatically clears all data stored on our server. You may also request manual deletion via email.</li>
+  <li><strong>Data access:</strong> Request a copy of all data we hold about you via email.</li>
+</ul>
+
+<h2>5. Children's Privacy</h2>
+
+<p>Although the app is rated 4+, we do not knowingly collect data from children under 13. If we become aware of such data, we will delete it immediately.</p>
+
+<h2>6. Changes to This Policy</h2>
+
+<p>We may update this policy occasionally. Significant changes will be communicated in-app.</p>
+
+<h2>7. Contact</h2>
+
+<p>For questions or requests: <a href="mailto:serayd6161@gmail.com">serayd6161@gmail.com</a></p>
+
+<p class="footer-note" style="margin-top: 48px; text-align: center;">&copy; 2026 Serkan Aydın</p>
+
+</div>
+</body>
+</html>
