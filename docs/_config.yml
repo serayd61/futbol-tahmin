@@ -1,0 +1,35 @@
+# GitHub Pages — Jekyll config
+#
+# docs/ klasörü hem public web sayfaları (privacy.html, support.html, index.html)
+# hem de internal development notes (.md plan dökümanları) içerir.
+# Jekyll sadece HTML sayfalarını build etsin, markdown dökümanlarını ignore etsin.
+
+title: Futbol Tahmini
+description: Bilimsel istatistiksel futbol tahmin uygulaması.
+theme: jekyll-theme-primer
+
+# Internal development docs — public site'ta görünmesin
+exclude:
+  - "*.md"
+  - APPLE_REVIEW_REPLY.md
+  - DASHBOARD_V2_PLAN.md
+  - MOBILE_UX_V3_PLAN.md
+  - MODEL_V3_PLAN.md
+  - PRODUCTION_LAUNCH_ROADMAP.md
+  - SUPABASE_HEALTH_REPORT.md
+  - README.md
+  - "*.yml"
+  - "*.yaml"
+  - Gemfile
+  - Gemfile.lock
+
+# Sadece HTML public sayfaları build et
+include:
+  - privacy.html
+  - support.html
+  - index.html
+
+# Markdown processor (eğer .md dahil etmek istersek)
+markdown: kramdown
+kramdown:
+  input: GFM
