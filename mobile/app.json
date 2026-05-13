@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Futbol Tahmin",
+    "name": "Futbol Tahmini",
     "slug": "futbol-tahmin",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,10 +14,13 @@
     },
     "ios": {
       "bundleIdentifier": "com.serkanaydin.futboltahmin",
-      "buildNumber": "1",
+      "buildNumber": "20",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -33,12 +36,24 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#16A34A"
+        }
+      ]
     ],
     "scheme": "futboltahmin",
     "extra": {
       "supabaseUrl": "https://dfaeelstabyoouuoivzd.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmYWVlbHN0YWJ5b291dW9pdnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNDkzMzgsImV4cCI6MjA5MzgyNTMzOH0.YCGj6cWAX5U0avHfdSGP4MI7FVJAgdN29HynWT6N1mc"
-    }
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmYWVlbHN0YWJ5b291dW9pdnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNDkzMzgsImV4cCI6MjA5MzgyNTMzOH0.YCGj6cWAX5U0avHfdSGP4MI7FVJAgdN29HynWT6N1mc",
+      "router": {},
+      "eas": {
+        "projectId": "cf767472-4318-4010-b984-9096b8069e42"
+      }
+    },
+    "owner": "serayd61"
   }
 }

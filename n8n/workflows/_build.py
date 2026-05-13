@@ -352,6 +352,370 @@ def workflow3():
 
 
 # -------------------------------------------------------------
+# WORKFLOW 4 — af-backfill (bir kerelik, son 30 gün api-sports.io)
+# -------------------------------------------------------------
+def workflow4():
+    nodes = [
+        node_manual("Manual Trigger", 240, 280),
+        node_code("Date Array (30d)", jsfile("date_array_30d.js"), 480, 280),
+        node_http_get(
+            "Get AF Daily Fixtures",
+            "https://v3.football.api-sports.io/fixtures",
+            720, 280,
+            query={"date": "={{ $json.date }}"},
+            headers={"x-apisports-key": "={{ $env.APIFOOTBALL_DIRECT_KEY }}"},
+        ),
+        node_code("Transform AF Multi", jsfile("transform_af.js"), 960, 280),
+        node_supabase_post(
+            "Upsert Leagues (AF)", "leagues",
+            "={{ $json.leagues }}", 1200, 160,
+        ),
+        node_supabase_post(
+            "Upsert Teams (AF)", "teams",
+            "={{ $('Transform AF Multi').first().json.teams }}", 1200, 280,
+        ),
+        node_supabase_post(
+            "Upsert Fixtures (AF)", "fixtures",
+            "={{ $('Transform AF Multi').first().json.fixtures }}", 1200, 400,
+        ),
+    ]
+
+    connections = chain(
+        "Manual Trigger",
+        "Date Array (30d)",
+        "Get AF Daily Fixtures",
+        "Transform AF Multi",
+        "Upsert Leagues (AF)",
+        "Upsert Teams (AF)",
+        "Upsert Fixtures (AF)",
+    )
+
+    return {
+        "name": "4 — af-backfill (one-time)",
+        "nodes": nodes,
+        "pinData": {},
+        "connections": connections,
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+        "versionId": nid(),
+        "meta": {"templateCredsSetupCompleted": True},
+        "tags": [{"name": "futbol-tahmin"}],
+    }
+
+
+# -------------------------------------------------------------
+# WORKFLOW 5 — af-league-season-fetch (Süper Lig + diğer hedef ligler için tüm sezon)
+# -------------------------------------------------------------
+def workflow5():
+    nodes = [
+        node_manual("Manual Trigger", 240, 280),
+        node_code("League Array", jsfile("league_array.js"), 480, 280),
+        node_http_get(
+            "Get League Season",
+            "https://v3.football.api-sports.io/fixtures",
+            720, 280,
+            query={
+                "league": "={{ $json.league }}",
+                "season": "={{ $json.season }}",
+            },
+            headers={"x-apisports-key": "={{ $env.APIFOOTBALL_DIRECT_KEY }}"},
+        ),
+        node_code("Transform AF Multi", jsfile("transform_af.js"), 960, 280),
+        node_supabase_post("Upsert Leagues (League AF)", "leagues",
+            "={{ $json.leagues }}", 1200, 160),
+        node_supabase_post("Upsert Teams (League AF)", "teams",
+            "={{ $('Transform AF Multi').first().json.teams }}", 1200, 280),
+        node_supabase_post("Upsert Fixtures (League AF)", "fixtures",
+            "={{ $('Transform AF Multi').first().json.fixtures }}", 1200, 400),
+    ]
+    connections = chain(
+        "Manual Trigger",
+        "League Array",
+        "Get League Season",
+        "Transform AF Multi",
+        "Upsert Leagues (League AF)",
+        "Upsert Teams (League AF)",
+        "Upsert Fixtures (League AF)",
+    )
+    return {
+        "name": "5 — af-league-season-fetch",
+        "nodes": nodes,
+        "pinData": {},
+        "connections": connections,
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+        "versionId": nid(),
+        "meta": {"templateCredsSetupCompleted": True},
+        "tags": [{"name": "futbol-tahmin"}],
+    }
+
+
+# -------------------------------------------------------------
+# WORKFLOW 6 — AI commentary (Gemini 2.5 Flash, native HTTP nodes)
+# -------------------------------------------------------------
+def node_aggregate(name, x, y):
+    """Aggregate → all items into a single list (data field)."""
+    return {
+        "parameters": {
+            "aggregate": "aggregateAllItemData",
+            "destinationFieldName": "data",
+            "options": {},
+        },
+        "id": nid(),
+        "name": name,
+        "type": "n8n-nodes-base.aggregate",
+        "typeVersion": 1,
+        "position": [x, y],
+    }
+
+
+def workflow6():
+    pending_url = (
+        "predictions?select=fixture_id,predicted_score,prob_home_win,prob_draw,prob_away_win,"
+        "prob_over_25,confidence,fixture:fixtures!inner("
+        "home_team:teams!home_team_id(name),"
+        "away_team:teams!away_team_id(name),"
+        "league:leagues(name),utc_date,status)"
+        "&fixture.status=eq.SCHEDULED"
+        "&ai_comment=is.null"
+        "&order=computed_at.desc&limit=5"          # 10 → 5 (free tier rate friendly)
+    )
+
+    gemini_url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-2.5-flash-lite:generateContent?key={{ $env.GEMINI_API_KEY }}"
+    )
+
+    gemini_body = (
+        '={"contents":[{"parts":[{"text": ' +
+        'JSON.stringify($json.prompt) ' +
+        '}]}],"generationConfig":{"maxOutputTokens":120,"temperature":0.5}}'
+    )
+
+    # Daha sade approach: gemini body'sini Code node'da hazırla
+    nodes = [
+        node_manual("Manual Trigger", 240, 280),
+        node_schedule("Schedule 06:00", "0 6 * * *", 240, 440),
+        node_supabase_get("Get Pending With Context", pending_url, 480, 360),
+        node_aggregate("Aggregate Predictions", 720, 360),
+        node_code("Build Prompts", jsfile("ai_build_prompts.js"), 960, 360),
+        # HTTP POST Gemini — key explicit query parametresi olarak
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+                "sendQuery": True,
+                "queryParameters": {
+                    "parameters": [
+                        {"name": "key", "value": "={{ $env.GEMINI_API_KEY }}"},
+                    ]
+                },
+                "sendHeaders": True,
+                "headerParameters": {
+                    "parameters": [
+                        {"name": "Content-Type", "value": "application/json"},
+                    ]
+                },
+                "sendBody": True,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.geminiBody }}",
+                "options": {
+                    "timeout": 30000,
+                    "batching": {
+                        "batch": {
+                            "batchSize": 1,
+                            "batchInterval": 8000,    # 8 sn — lite modelin daha rahat kotasıyla uyumlu
+                        }
+                    },
+                },
+            },
+            "id": nid(),
+            "name": "Gemini Call",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [1200, 360],
+        },
+        node_code("Collect Updates", jsfile("ai_collect_updates.js"), 1440, 360),
+        node_supabase_post(
+            "Upsert AI Comments", "predictions",
+            "={{ $json.updates }}", 1680, 360,
+            on_conflict="fixture_id",
+        ),
+    ]
+
+    connections = merge_connections(
+        {"Manual Trigger":  {"main": [[{"node": "Get Pending With Context", "type": "main", "index": 0}]]}},
+        {"Schedule 06:00":  {"main": [[{"node": "Get Pending With Context", "type": "main", "index": 0}]]}},
+        {"Get Pending With Context": {"main": [[{"node": "Aggregate Predictions", "type": "main", "index": 0}]]}},
+        {"Aggregate Predictions":    {"main": [[{"node": "Build Prompts",         "type": "main", "index": 0}]]}},
+        {"Build Prompts":            {"main": [[{"node": "Gemini Call",            "type": "main", "index": 0}]]}},
+        {"Gemini Call":              {"main": [[{"node": "Collect Updates",        "type": "main", "index": 0}]]}},
+        {"Collect Updates":          {"main": [[{"node": "Upsert AI Comments",     "type": "main", "index": 0}]]}},
+    )
+
+    return {
+        "name": "6 — ai-commentary",
+        "nodes": nodes,
+        "pinData": {},
+        "connections": connections,
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+        "versionId": nid(),
+        "meta": {"templateCredsSetupCompleted": True},
+        "tags": [{"name": "futbol-tahmin"}],
+    }
+
+
+# -------------------------------------------------------------
+# WORKFLOW 7 — FD historical seasons (H2H için derin geçmiş)
+# -------------------------------------------------------------
+def workflow7():
+    nodes = [
+        node_manual("Manual Trigger", 240, 280),
+        node_code("FD Competition Array", jsfile("fd_competition_array.js"), 480, 280),
+        node_http_get(
+            "Get Competition Season",
+            "=https://api.football-data.org/v4/competitions/{{ $json.competition_id }}/matches",
+            720, 280,
+            headers={"X-Auth-Token": "={{ $env.FOOTBALL_DATA_API_KEY }}"},
+        ),
+        # FD'nin 10/dk limit'ine takılmamak için 7 sn arayla
+        node_code("Transform FD Multi", jsfile("transform_fd.js"), 960, 280),
+        node_supabase_post("Upsert Leagues (FD hist)", "leagues",
+            "={{ $json.leagues }}", 1200, 160),
+        node_supabase_post("Upsert Teams (FD hist)", "teams",
+            "={{ $('Transform FD Multi').first().json.teams }}", 1200, 280),
+        node_supabase_post("Upsert Fixtures (FD hist)", "fixtures",
+            "={{ $('Transform FD Multi').first().json.fixtures }}", 1200, 400),
+    ]
+
+    # Get Competition Season düğümüne batching ekle (rate limit safe)
+    for n in nodes:
+        if n["name"] == "Get Competition Season":
+            n["parameters"]["options"]["batching"] = {
+                "batch": {"batchSize": 1, "batchInterval": 7000}   # 7 sn = ~8 req/dk, FD safe
+            }
+
+    connections = chain(
+        "Manual Trigger",
+        "FD Competition Array",
+        "Get Competition Season",
+        "Transform FD Multi",
+        "Upsert Leagues (FD hist)",
+        "Upsert Teams (FD hist)",
+        "Upsert Fixtures (FD hist)",
+    )
+
+    return {
+        "name": "7 — fd-historical (H2H için)",
+        "nodes": nodes,
+        "pinData": {},
+        "connections": connections,
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+        "versionId": nid(),
+        "meta": {"templateCredsSetupCompleted": True},
+        "tags": [{"name": "futbol-tahmin"}],
+    }
+
+
+# -------------------------------------------------------------
+# WORKFLOW 8 — Push sender (favori takım maçından önce bildirim)
+# -------------------------------------------------------------
+def workflow8():
+    compute_js = (
+        "const now = new Date();\n"
+        "const end = new Date(now.getTime() + 75 * 60 * 1000);\n"
+        "return [{ json: { start: now.toISOString(), end: end.toISOString() }}];\n"
+    )
+
+    # Get Upcoming Fixtures — URL'de inline expression yok, query params ile gönder
+    fixtures_node = {
+        "parameters": {
+            "method": "GET",
+            "url": "={{ $env.SUPABASE_URL }}/rest/v1/fixtures",
+            "sendQuery": True,
+            "queryParameters": {
+                "parameters": [
+                    {"name": "select", "value": "id,home_team_id,away_team_id,utc_date,status,home_team:teams!home_team_id(name),away_team:teams!away_team_id(name)"},
+                    {"name": "status", "value": "eq.SCHEDULED"},
+                    {"name": "utc_date", "value": "=gte.{{ $json.start }}"},
+                    {"name": "utc_date", "value": "=lte.{{ $json.end }}"},
+                    {"name": "limit", "value": "100"},
+                ]
+            },
+            "sendHeaders": True,
+            "headerParameters": {
+                "parameters": [
+                    {"name": "apikey",        "value": "={{ $env.SUPABASE_SERVICE_KEY }}"},
+                    {"name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},
+                ]
+            },
+            "options": {"timeout": 30000},
+        },
+        "id": nid(),
+        "name": "Get Upcoming Fixtures (1h)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [720, 200],
+    }
+
+    tokens_url = "push_tokens?select=token,favorite_teams,enabled&enabled=eq.true&limit=5000"
+
+    nodes = [
+        node_manual("Manual Trigger", 240, 280),
+        node_schedule("Schedule */15 min", "*/15 * * * *", 240, 440),
+        node_code("Compute Time Window", compute_js, 480, 280),
+        fixtures_node,
+        node_supabase_get("Get Push Tokens", tokens_url, 720, 420),
+        node_code("Build Push Messages", jsfile("push_sender.js"), 960, 280),
+        # Expo Push API'ye batch gönderim
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://exp.host/--/api/v2/push/send",
+                "sendHeaders": True,
+                "headerParameters": {
+                    "parameters": [
+                        {"name": "Accept", "value": "application/json"},
+                        {"name": "Content-Type", "value": "application/json"},
+                    ]
+                },
+                "sendBody": True,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.messages }}",
+                "options": {"timeout": 30000},
+            },
+            "id": nid(),
+            "name": "Expo Push Send",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [960, 280],
+        },
+    ]
+
+    connections = merge_connections(
+        {"Manual Trigger":             {"main": [[{"node": "Compute Time Window", "type": "main", "index": 0}]]}},
+        {"Schedule */15 min":          {"main": [[{"node": "Compute Time Window", "type": "main", "index": 0}]]}},
+        {"Compute Time Window":        {"main": [[{"node": "Get Upcoming Fixtures (1h)", "type": "main", "index": 0}]]}},
+        {"Get Upcoming Fixtures (1h)": {"main": [[{"node": "Get Push Tokens",      "type": "main", "index": 0}]]}},
+        {"Get Push Tokens":            {"main": [[{"node": "Build Push Messages", "type": "main", "index": 0}]]}},
+        {"Build Push Messages":        {"main": [[{"node": "Expo Push Send",      "type": "main", "index": 0}]]}},
+    )
+    return {
+        "name": "8 — push-notifications",
+        "nodes": nodes,
+        "pinData": {},
+        "connections": connections,
+        "active": False,
+        "settings": {"executionOrder": "v1"},
+        "versionId": nid(),
+        "meta": {"templateCredsSetupCompleted": True},
+        "tags": [{"name": "futbol-tahmin"}],
+    }
+
+
+# -------------------------------------------------------------
 # main
 # -------------------------------------------------------------
 def main():
@@ -359,6 +723,11 @@ def main():
         "workflow1-fixtures-sync.json":      workflow1(),
         "workflow2-team-stats-rebuild.json": workflow2(),
         "workflow3-predictions-compute.json": workflow3(),
+        "workflow4-af-backfill.json":        workflow4(),
+        "workflow5-af-league-season.json":   workflow5(),
+        "workflow6-ai-commentary.json":      workflow6(),
+        "workflow7-fd-historical.json":      workflow7(),
+        "workflow8-push-notifications.json": workflow8(),
     }
     for name, data in files.items():
         path = OUT / name

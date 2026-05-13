@@ -1,0 +1,286 @@
+{
+  "name": "5 — af-league-season-fetch",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c4c6dfc0-b021-4a53-8730-75cf7018f20e",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AF league season fetch — hedef ligleri sezon ile beraber liste\n// Bu listeyi genişletebilirsin. league_id api-sports.io'dan: https://www.api-football.com/documentation-v3#operation/get-leagues\nconst targets = [\n  { league: 203, season: 2025, name: 'Süper Lig (TR)' },\n  { league: 204, season: 2025, name: '1. Lig (TR)' },\n  // Daha fazla istersen:\n  // { league: 39, season: 2025, name: 'Premier League' },\n  // { league: 140, season: 2025, name: 'La Liga' },\n  // { league: 78, season: 2025, name: 'Bundesliga' },\n  // { league: 135, season: 2025, name: 'Serie A' },\n  // { league: 61, season: 2025, name: 'Ligue 1' },\n];\n\nreturn targets.map(t => ({ json: t }));\n"
+      },
+      "id": "1acae85f-3021-42c6-a821-715e7d2b083b",
+      "name": "League Array",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://v3.football.api-sports.io/fixtures",
+        "options": {
+          "timeout": 30000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "league",
+              "value": "={{ $json.league }}"
+            },
+            {
+              "name": "season",
+              "value": "={{ $json.season }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apisports-key",
+              "value": "={{ $env.APIFOOTBALL_DIRECT_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "50c08bf5-f6da-4464-8e72-3c907483b4c5",
+      "name": "Get League Season",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// API-Football (RapidAPI / api-sports.io) yanıtını leagues/teams/fixtures'a böl\n// ID çakışmasını önlemek için 100_000_000 offset\n// Birden çok input item gelebilir (multi-day backfill) — hepsinin response'unu birleştir\nconst OFFSET = 100000000;\nconst items = [];\nfor (const inp of $input.all()) {\n  const r = (inp.json && inp.json.response) || [];\n  for (const x of r) items.push(x);\n}\nconst leaguesMap = new Map();\nconst teamsMap = new Map();\nconst fixturesMap = new Map();   // id ile dedupe (multi-day çağrıda aynı fixture tekrar gelebilir)\n\nconst statusMap = {\n  TBD: 'SCHEDULED', NS: 'SCHEDULED',\n  '1H': 'LIVE', HT: 'LIVE', '2H': 'LIVE', ET: 'LIVE', BT: 'LIVE', P: 'LIVE', LIVE: 'LIVE', INT: 'LIVE',\n  FT: 'FINISHED', AET: 'FINISHED', PEN: 'FINISHED', AWD: 'FINISHED', WO: 'FINISHED',\n  PST: 'POSTPONED', CANC: 'POSTPONED', ABD: 'POSTPONED', SUSP: 'POSTPONED'\n};\n\nconst now = new Date().toISOString();\n\nfor (const it of items) {\n  const f = it.fixture || {};\n  const l = it.league || {};\n  const home = (it.teams && it.teams.home) || {};\n  const away = (it.teams && it.teams.away) || {};\n  const goals = it.goals || {};\n  if (!f.id || !l.id || !home.id || !away.id) continue;\n\n  const lid = l.id + OFFSET;\n  const hid = home.id + OFFSET;\n  const aid = away.id + OFFSET;\n  const fid = f.id + OFFSET;\n\n  if (!leaguesMap.has(lid)) {\n    leaguesMap.set(lid, {\n      id: lid,\n      name: l.name,\n      country: l.country || null,\n      logo: l.logo || null,\n      season: l.season || null,\n      source: 'api-football',\n      updated_at: now\n    });\n  }\n\n  for (const [t, id] of [[home, hid], [away, aid]]) {\n    if (!teamsMap.has(id)) {\n      teamsMap.set(id, {\n        id: id,\n        name: t.name,\n        short_name: null,\n        logo: t.logo || null,\n        country: l.country || null,\n        league_id: lid,\n        updated_at: now\n      });\n    }\n  }\n\n  const sCode = (f.status && f.status.short) || 'NS';\n  fixturesMap.set(fid, {\n    id: fid,\n    league_id: lid,\n    season: l.season || null,\n    utc_date: f.date,\n    status: statusMap[sCode] || 'SCHEDULED',\n    home_team_id: hid,\n    away_team_id: aid,\n    home_goals: (goals.home === undefined ? null : goals.home),\n    away_goals: (goals.away === undefined ? null : goals.away),\n    venue: (f.venue && f.venue.name) || null,\n    source: 'api-football',\n    updated_at: now\n  });\n}\n\nconst fixtures = Array.from(fixturesMap.values());\nreturn [{ json: {\n  leagues: Array.from(leaguesMap.values()),\n  teams: Array.from(teamsMap.values()),\n  fixtures: fixtures,\n  count: fixtures.length\n}}];\n"
+      },
+      "id": "80facb84-e105-4265-96a4-ba43f2a1e9dd",
+      "name": "Transform AF Multi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leagues",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.leagues }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "026bb10d-3e22-4858-a7b5-3ac7472783c1",
+      "name": "Upsert Leagues (League AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/teams",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Transform AF Multi').first().json.teams }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "4d83ea60-f5a8-490e-8529-9ab041b1f4ee",
+      "name": "Upsert Teams (League AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/fixtures",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Transform AF Multi').first().json.fixtures }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "66e8ad5c-3b80-4db4-99e8-f99011fcc39d",
+      "name": "Upsert Fixtures (League AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "League Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "League Array": {
+      "main": [
+        [
+          {
+            "node": "Get League Season",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get League Season": {
+      "main": [
+        [
+          {
+            "node": "Transform AF Multi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform AF Multi": {
+      "main": [
+        [
+          {
+            "node": "Upsert Leagues (League AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Leagues (League AF)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Teams (League AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Teams (League AF)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Fixtures (League AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3b1b4362-f54f-479a-bf11-2e30d303f3df",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "futbol-tahmin"
+    }
+  ]
+}

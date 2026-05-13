@@ -1,0 +1,285 @@
+{
+  "name": "6 — ai-commentary",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "d2f39a2b-bf73-4bca-af30-aca43b15c42e",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "4c701bf5-1856-47ea-8f9a-05a0bca1b8f6",
+      "name": "Schedule 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/predictions?select=fixture_id,predicted_score,prob_home_win,prob_draw,prob_away_win,prob_over_25,confidence,fixture:fixtures!inner(home_team:teams!home_team_id(name),away_team:teams!away_team_id(name),league:leagues(name),utc_date,status)&fixture.status=eq.SCHEDULED&ai_comment=is.null&order=computed_at.desc&limit=5",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b8702863-edeb-4737-ae1f-17c63020b084",
+      "name": "Get Pending With Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "data",
+        "options": {}
+      },
+      "id": "4ac614bd-5274-43ab-b124-85191845e148",
+      "name": "Aggregate Predictions",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        720,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get Pending With Context output → 15 ayrı item (her biri Gemini için 1 prompt)\n// Aggregate sonrası tek bir item içinde { data: [...] } yapısında gelir.\nconst items = $input.all();\nlet rows = [];\nif (items.length === 1 && Array.isArray(items[0].json?.data)) {\n  rows = items[0].json.data;\n} else if (items.length === 1 && Array.isArray(items[0].json)) {\n  rows = items[0].json;\n} else {\n  rows = items.map(i => i.json);\n}\n\nconst out = [];\nfor (const r of rows) {\n  if (!r || !r.fixture_id) continue;\n  const f = r.fixture || {};\n  const home = f.home_team?.name || 'Ev sahibi';\n  const away = f.away_team?.name || 'Deplasman';\n  const lig  = f.league?.name || '';\n\n  const prompt = `Aşağıdaki futbol maçı için 1-2 cümlelik kısa, profesyonel Türkçe yorum yaz.\nSadece düz metin (max 250 karakter). Markdown yok, emoji yok, başlık yok.\n\"Muhtemelen\", \"modele göre\" gibi temkinli ifadeler kullan, garantili kazanç vaat etme.\n\nLig: ${lig}\nEv sahibi: ${home}\nDeplasman: ${away}\nTahmini skor: ${r.predicted_score}\n1X2 olasılıkları: 1=%${(r.prob_home_win*100).toFixed(0)} X=%${(r.prob_draw*100).toFixed(0)} 2=%${(r.prob_away_win*100).toFixed(0)}\nÜst 2.5: %${(r.prob_over_25*100).toFixed(0)}\nGüven: ${r.confidence}\n\nYorum:`;\n\n  out.push({\n    json: {\n      fixture_id: r.fixture_id,\n      prompt,\n      // Pre-built Gemini API body\n      // Gemini 2.5 Flash bir \"thinking\" model — thinkingBudget: 0 ile internal düşünme kapatılır\n      // (yoksa output token'ların çoğu thinking'e gider, cevaba 1-2 kelime kalır)\n      geminiBody: {\n        contents: [{ parts: [{ text: prompt }] }],\n        generationConfig: {\n          maxOutputTokens: 350,\n          temperature: 0.5,\n          thinkingConfig: { thinkingBudget: 0 },\n        },\n      },\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "id": "f750cd3f-67fe-43e1-80b6-50b00f642d81",
+      "name": "Build Prompts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.geminiBody }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 8000
+            }
+          }
+        }
+      },
+      "id": "2ca4fdc9-5dde-437d-9cfb-438139a1e601",
+      "name": "Gemini Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gemini her item için cevap döndü. Şimdi parse + tek bir update payload oluştur.\n// Multi-input (her biri 1 fixture_id + Gemini response) → 1 output (array içinde updates).\nconst items = $input.all();\nconst promptItems = $('Build Prompts').all();   // her birinde fixture_id var\n\nconst updates = [];\nconst now = new Date().toISOString();\n\nfor (let i = 0; i < items.length; i++) {\n  const aiData = items[i].json;\n  const fixtureId = promptItems[i]?.json?.fixture_id;\n  if (!fixtureId) continue;\n\n  // Gemini response yapısı: { candidates: [{ content: { parts: [{ text: \"...\" }] } }] }\n  const text = aiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();\n  if (!text) continue;\n\n  updates.push({\n    fixture_id: fixtureId,\n    ai_comment: text.slice(0, 500),\n    ai_generated_at: now,\n  });\n}\n\nreturn [{\n  json: {\n    updates,\n    count: updates.length,\n  },\n}];\n"
+      },
+      "id": "5c8a707b-1313-4ec5-bb59-db1ede68ba4a",
+      "name": "Collect Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/predictions?on_conflict=fixture_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.updates }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "808aecfd-34c7-46b6-b34e-efc6c1a0f5b1",
+      "name": "Upsert AI Comments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        360
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Pending With Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule 06:00": {
+      "main": [
+        [
+          {
+            "node": "Get Pending With Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending With Context": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Predictions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Predictions": {
+      "main": [
+        [
+          {
+            "node": "Build Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompts": {
+      "main": [
+        [
+          {
+            "node": "Gemini Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Call": {
+      "main": [
+        [
+          {
+            "node": "Collect Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Updates": {
+      "main": [
+        [
+          {
+            "node": "Upsert AI Comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e42fbdcf-ba49-4bbf-a826-28bf292df5a1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "futbol-tahmin"
+    }
+  ]
+}

@@ -36,3 +36,6 @@ yarn-error.log*
 
 # --- EAS / Expo ---
 .easignore
+
+# VPS-ready workflow JSON'lari (servis anahtarlari icerir)
+n8n/workflows/vps_ready/

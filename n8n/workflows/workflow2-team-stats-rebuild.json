@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "2edc7be6-1786-4abc-a5a5-bdbd8524a2e6",
+      "id": "179193b4-c331-443b-b10b-980a93bf8e68",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
           ]
         }
       },
-      "id": "f8bc5acb-564a-48fc-99fd-cd2810e05db0",
+      "id": "f7f2d9dd-7ff8-43b8-be28-8a8278ca55d1",
       "name": "Schedule 04:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -53,7 +53,7 @@
           "timeout": 30000
         }
       },
-      "id": "67e3312c-51b9-4cdd-9028-38100008d5e4",
+      "id": "7f06d3c9-5711-49cf-89ee-8087f24f83de",
       "name": "Get Last 30d Fixtures",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -66,7 +66,7 @@
       "parameters": {
         "jsCode": "// Son 30 günün bitmiş maçlarından her takımın istatistiğini çıkar\n// n8n HTTP Request node, Supabase'in array yanıtını otomatik olarak\n// her satırı ayrı item yapacak şekilde açabilir. İki durumu da handle et:\n//   - 1 item gelir, json bir array (eski davranış)\n//   - N item gelir, her item.json tek bir fixture (n8n yeni davranış)\nconst items = $input.all();\nlet arr = [];\nif (items.length === 1 && Array.isArray(items[0].json)) {\n  arr = items[0].json;\n} else {\n  arr = items.map(i => i.json);\n}\nconst stats = new Map();\n\nconst get = (id, lid) => {\n  if (!stats.has(id)) stats.set(id, {\n    team_id: id, league_id: lid,\n    matches_played: 0,\n    home_matches: 0, away_matches: 0,\n    home_scored: 0, home_conceded: 0,\n    away_scored: 0, away_conceded: 0,\n    total_scored: 0, total_conceded: 0,\n    last_results: []\n  });\n  return stats.get(id);\n};\n\n// Tarihe göre eski → yeni sıralanmış olmasını bekliyoruz (REST order=utc_date.asc)\nfor (const m of arr) {\n  if (m.status !== 'FINISHED') continue;\n  if (m.home_goals == null || m.away_goals == null) continue;\n\n  const h = get(m.home_team_id, m.league_id);\n  const a = get(m.away_team_id, m.league_id);\n\n  h.matches_played++; a.matches_played++;\n  h.home_matches++; a.away_matches++;\n  h.home_scored += m.home_goals;  h.home_conceded += m.away_goals;\n  a.away_scored += m.away_goals;  a.away_conceded += m.home_goals;\n  h.total_scored += m.home_goals; h.total_conceded += m.away_goals;\n  a.total_scored += m.away_goals; a.total_conceded += m.home_goals;\n\n  let hr, ar;\n  if (m.home_goals > m.away_goals)      { hr = 'W'; ar = 'L'; }\n  else if (m.home_goals < m.away_goals) { hr = 'L'; ar = 'W'; }\n  else                                  { hr = 'D'; ar = 'D'; }\n  h.last_results.push(hr);\n  a.last_results.push(ar);\n}\n\nconst out = [];\nconst now = new Date().toISOString();\nfor (const s of stats.values()) {\n  if (s.matches_played === 0) continue;\n  const last5 = s.last_results.slice(-5).join('');\n  out.push({\n    team_id: s.team_id,\n    league_id: s.league_id,\n    matches_played: s.matches_played,\n    goals_scored_avg:   +(s.total_scored / s.matches_played).toFixed(2),\n    goals_conceded_avg: +(s.total_conceded / s.matches_played).toFixed(2),\n    home_scored_avg:    s.home_matches ? +(s.home_scored / s.home_matches).toFixed(2)   : 0,\n    home_conceded_avg:  s.home_matches ? +(s.home_conceded / s.home_matches).toFixed(2) : 0,\n    away_scored_avg:    s.away_matches ? +(s.away_scored / s.away_matches).toFixed(2)   : 0,\n    away_conceded_avg:  s.away_matches ? +(s.away_conceded / s.away_matches).toFixed(2) : 0,\n    form: last5,\n    updated_at: now\n  });\n}\n\nreturn [{ json: { team_stats: out, count: out.length } }];\n"
       },
-      "id": "55774a73-b2bb-4b1b-86cd-0adb9b765b07",
+      "id": "bdf851f0-eb30-44f3-8be4-11658b3bdfc1",
       "name": "Aggregate Stats",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -107,7 +107,7 @@
           "timeout": 30000
         }
       },
-      "id": "2f9d0abc-e072-4b7b-b180-460da4f87454",
+      "id": "57b33340-b3c7-4d6b-8dd5-7d186b64d6d0",
       "name": "Upsert Team Stats",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -168,7 +168,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "c4b22148-4eb4-406b-8a45-130e098e57e2",
+  "versionId": "a449a083-4630-4b8c-9e52-d1accfa8c25a",
   "meta": {
     "templateCredsSetupCompleted": true
   },

@@ -9,12 +9,17 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.105.4",
     "date-fns": "^4.1.0",
     "expo": "~54.0.33",
+    "expo-apple-authentication": "~8.0.8",
+    "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
+    "expo-device": "~8.0.10",
     "expo-linking": "~8.0.12",
+    "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.23",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",

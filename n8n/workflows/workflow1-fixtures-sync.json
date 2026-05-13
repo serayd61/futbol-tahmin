@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "d53cf48a-2497-4a56-8edf-179e4159d1a3",
+      "id": "ec441589-6fc4-4b3c-a0e1-73a349219e07",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
           ]
         }
       },
-      "id": "cdcc085a-f6ca-44e8-bf1e-d8e3a5599d8c",
+      "id": "869d86a0-1020-4459-8eb8-181e53442721",
       "name": "Schedule 03:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -36,7 +36,7 @@
       "parameters": {
         "jsCode": "// Bugün ve +7 gün için ISO tarihler üret\nconst today = new Date();\nconst week = new Date(today.getTime() + 7 * 86400000);\nconst fmt = d => d.toISOString().slice(0, 10);\nreturn [{ json: {\n  dateFrom: fmt(today),\n  dateTo: fmt(week),\n  todayDate: fmt(today)\n}}];\n"
       },
-      "id": "f98ebe2f-495e-4c2b-996f-5ab8e3f31c69",
+      "id": "151b0903-8875-4a54-8954-138ac2a814b2",
       "name": "Date Range",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -75,7 +75,7 @@
           ]
         }
       },
-      "id": "798eae93-686e-4a5f-baff-f3f1a5f465ae",
+      "id": "5f264fcc-8ab2-424d-b1cd-7677618d9055",
       "name": "Get FD Matches",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -88,7 +88,7 @@
       "parameters": {
         "jsCode": "// Football-Data.org /v4/matches yanıtını leagues/teams/fixtures'a böl\n// Birden çok input item gelebilir (chunked date ranges) — hepsini birleştir\nconst matches = [];\nfor (const item of $input.all()) {\n  const ms = (item.json && item.json.matches) || [];\n  for (const m of ms) matches.push(m);\n}\nconst leaguesMap = new Map();\nconst teamsMap = new Map();\nconst fixturesMap = new Map();   // id ile dedupe (chunk'lar çakışırsa)\n\nconst statusMap = {\n  SCHEDULED: 'SCHEDULED', TIMED: 'SCHEDULED',\n  LIVE: 'LIVE', IN_PLAY: 'LIVE', PAUSED: 'LIVE',\n  FINISHED: 'FINISHED', AWARDED: 'FINISHED',\n  POSTPONED: 'POSTPONED', SUSPENDED: 'POSTPONED', CANCELLED: 'POSTPONED'\n};\n\nconst now = new Date().toISOString();\n\nfor (const m of matches) {\n  const c = m.competition || {};\n  const home = m.homeTeam || {};\n  const away = m.awayTeam || {};\n  if (!c.id || !home.id || !away.id) continue;\n\n  const seasonYear = (m.season && m.season.startDate) ? parseInt(m.season.startDate.slice(0,4)) : null;\n\n  if (!leaguesMap.has(c.id)) {\n    leaguesMap.set(c.id, {\n      id: c.id,\n      name: c.name,\n      country: (c.area && c.area.name) || null,\n      logo: c.emblem || null,\n      season: seasonYear,\n      source: 'football-data',\n      updated_at: now\n    });\n  }\n\n  for (const t of [home, away]) {\n    if (!teamsMap.has(t.id)) {\n      teamsMap.set(t.id, {\n        id: t.id,\n        name: t.name,\n        short_name: t.shortName || t.tla || null,\n        logo: t.crest || null,\n        country: (c.area && c.area.name) || null,\n        league_id: c.id,\n        updated_at: now\n      });\n    }\n  }\n\n  const ft = (m.score && m.score.fullTime) || {};\n  fixturesMap.set(m.id, {\n    id: m.id,\n    league_id: c.id,\n    season: seasonYear,\n    utc_date: m.utcDate,\n    status: statusMap[m.status] || 'SCHEDULED',\n    home_team_id: home.id,\n    away_team_id: away.id,\n    home_goals: (ft.home === undefined ? null : ft.home),\n    away_goals: (ft.away === undefined ? null : ft.away),\n    venue: m.venue || null,\n    source: 'football-data',\n    updated_at: now\n  });\n}\n\nconst fixtures = Array.from(fixturesMap.values());\nreturn [{ json: {\n  leagues: Array.from(leaguesMap.values()),\n  teams: Array.from(teamsMap.values()),\n  fixtures: fixtures,\n  count: fixtures.length\n}}];\n"
       },
-      "id": "128bdf6c-55a6-41ee-a90c-a93d57fdcc43",
+      "id": "3733f749-c38b-4806-b149-f6630c3901df",
       "name": "Transform FD",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -129,7 +129,7 @@
           "timeout": 30000
         }
       },
-      "id": "1c8166e0-4348-4418-bf9a-8a05c2d22561",
+      "id": "4aeb13d8-b6cc-4cf9-8521-effb209070a2",
       "name": "Upsert Leagues (FD)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -170,7 +170,7 @@
           "timeout": 30000
         }
       },
-      "id": "360d8a0a-e16a-4f73-963b-eff97159410f",
+      "id": "574987a1-3eba-453f-8b63-46a4c1453b81",
       "name": "Upsert Teams (FD)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -211,7 +211,7 @@
           "timeout": 30000
         }
       },
-      "id": "671c136a-9571-4679-a724-10200aa28b3c",
+      "id": "6db771ca-b7eb-4079-bfb9-e1a7f9e01d93",
       "name": "Upsert Fixtures (FD)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -246,7 +246,7 @@
           ]
         }
       },
-      "id": "67eec383-858f-4d86-8cc7-bef62b511479",
+      "id": "02985e65-4e83-447d-9034-cccd0a3b5de8",
       "name": "Get AF Fixtures",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -257,9 +257,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// API-Football (RapidAPI) yanıtını leagues/teams/fixtures'a böl\n// ID çakışmasını önlemek için 100_000_000 offset\nconst OFFSET = 100000000;\nconst items = ($input.first().json && $input.first().json.response) || [];\nconst leaguesMap = new Map();\nconst teamsMap = new Map();\nconst fixtures = [];\n\nconst statusMap = {\n  TBD: 'SCHEDULED', NS: 'SCHEDULED',\n  '1H': 'LIVE', HT: 'LIVE', '2H': 'LIVE', ET: 'LIVE', BT: 'LIVE', P: 'LIVE', LIVE: 'LIVE', INT: 'LIVE',\n  FT: 'FINISHED', AET: 'FINISHED', PEN: 'FINISHED', AWD: 'FINISHED', WO: 'FINISHED',\n  PST: 'POSTPONED', CANC: 'POSTPONED', ABD: 'POSTPONED', SUSP: 'POSTPONED'\n};\n\nconst now = new Date().toISOString();\n\nfor (const it of items) {\n  const f = it.fixture || {};\n  const l = it.league || {};\n  const home = (it.teams && it.teams.home) || {};\n  const away = (it.teams && it.teams.away) || {};\n  const goals = it.goals || {};\n  if (!f.id || !l.id || !home.id || !away.id) continue;\n\n  const lid = l.id + OFFSET;\n  const hid = home.id + OFFSET;\n  const aid = away.id + OFFSET;\n  const fid = f.id + OFFSET;\n\n  if (!leaguesMap.has(lid)) {\n    leaguesMap.set(lid, {\n      id: lid,\n      name: l.name,\n      country: l.country || null,\n      logo: l.logo || null,\n      season: l.season || null,\n      source: 'api-football',\n      updated_at: now\n    });\n  }\n\n  for (const [t, id] of [[home, hid], [away, aid]]) {\n    if (!teamsMap.has(id)) {\n      teamsMap.set(id, {\n        id: id,\n        name: t.name,\n        short_name: null,\n        logo: t.logo || null,\n        country: l.country || null,\n        league_id: lid,\n        updated_at: now\n      });\n    }\n  }\n\n  const sCode = (f.status && f.status.short) || 'NS';\n  fixtures.push({\n    id: fid,\n    league_id: lid,\n    season: l.season || null,\n    utc_date: f.date,\n    status: statusMap[sCode] || 'SCHEDULED',\n    home_team_id: hid,\n    away_team_id: aid,\n    home_goals: (goals.home === undefined ? null : goals.home),\n    away_goals: (goals.away === undefined ? null : goals.away),\n    venue: (f.venue && f.venue.name) || null,\n    source: 'api-football',\n    updated_at: now\n  });\n}\n\nreturn [{ json: {\n  leagues: Array.from(leaguesMap.values()),\n  teams: Array.from(teamsMap.values()),\n  fixtures: fixtures,\n  count: fixtures.length\n}}];\n"
+        "jsCode": "// API-Football (RapidAPI / api-sports.io) yanıtını leagues/teams/fixtures'a böl\n// ID çakışmasını önlemek için 100_000_000 offset\n// Birden çok input item gelebilir (multi-day backfill) — hepsinin response'unu birleştir\nconst OFFSET = 100000000;\nconst items = [];\nfor (const inp of $input.all()) {\n  const r = (inp.json && inp.json.response) || [];\n  for (const x of r) items.push(x);\n}\nconst leaguesMap = new Map();\nconst teamsMap = new Map();\nconst fixturesMap = new Map();   // id ile dedupe (multi-day çağrıda aynı fixture tekrar gelebilir)\n\nconst statusMap = {\n  TBD: 'SCHEDULED', NS: 'SCHEDULED',\n  '1H': 'LIVE', HT: 'LIVE', '2H': 'LIVE', ET: 'LIVE', BT: 'LIVE', P: 'LIVE', LIVE: 'LIVE', INT: 'LIVE',\n  FT: 'FINISHED', AET: 'FINISHED', PEN: 'FINISHED', AWD: 'FINISHED', WO: 'FINISHED',\n  PST: 'POSTPONED', CANC: 'POSTPONED', ABD: 'POSTPONED', SUSP: 'POSTPONED'\n};\n\nconst now = new Date().toISOString();\n\nfor (const it of items) {\n  const f = it.fixture || {};\n  const l = it.league || {};\n  const home = (it.teams && it.teams.home) || {};\n  const away = (it.teams && it.teams.away) || {};\n  const goals = it.goals || {};\n  if (!f.id || !l.id || !home.id || !away.id) continue;\n\n  const lid = l.id + OFFSET;\n  const hid = home.id + OFFSET;\n  const aid = away.id + OFFSET;\n  const fid = f.id + OFFSET;\n\n  if (!leaguesMap.has(lid)) {\n    leaguesMap.set(lid, {\n      id: lid,\n      name: l.name,\n      country: l.country || null,\n      logo: l.logo || null,\n      season: l.season || null,\n      source: 'api-football',\n      updated_at: now\n    });\n  }\n\n  for (const [t, id] of [[home, hid], [away, aid]]) {\n    if (!teamsMap.has(id)) {\n      teamsMap.set(id, {\n        id: id,\n        name: t.name,\n        short_name: null,\n        logo: t.logo || null,\n        country: l.country || null,\n        league_id: lid,\n        updated_at: now\n      });\n    }\n  }\n\n  const sCode = (f.status && f.status.short) || 'NS';\n  fixturesMap.set(fid, {\n    id: fid,\n    league_id: lid,\n    season: l.season || null,\n    utc_date: f.date,\n    status: statusMap[sCode] || 'SCHEDULED',\n    home_team_id: hid,\n    away_team_id: aid,\n    home_goals: (goals.home === undefined ? null : goals.home),\n    away_goals: (goals.away === undefined ? null : goals.away),\n    venue: (f.venue && f.venue.name) || null,\n    source: 'api-football',\n    updated_at: now\n  });\n}\n\nconst fixtures = Array.from(fixturesMap.values());\nreturn [{ json: {\n  leagues: Array.from(leaguesMap.values()),\n  teams: Array.from(teamsMap.values()),\n  fixtures: fixtures,\n  count: fixtures.length\n}}];\n"
       },
-      "id": "c4522e9b-6822-4864-93c0-195467e2ff1d",
+      "id": "a2c05fff-749a-4757-a7da-c41106f77847",
       "name": "Transform AF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -300,7 +300,7 @@
           "timeout": 30000
         }
       },
-      "id": "06bd5b0d-d495-429a-b928-203dd12d2f7e",
+      "id": "2506805a-c604-4f07-948f-2e94b74fbd48",
       "name": "Upsert Leagues (AF)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -341,7 +341,7 @@
           "timeout": 30000
         }
       },
-      "id": "573f2093-d475-401d-b95b-4665fe4dba17",
+      "id": "8e240aaa-b6df-4511-92ea-756b8c46e901",
       "name": "Upsert Teams (AF)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -382,7 +382,7 @@
           "timeout": 30000
         }
       },
-      "id": "c14ec16a-e86f-486c-b68d-665cd6506b81",
+      "id": "7c5d1b73-998a-49fa-8065-1be35d185680",
       "name": "Upsert Fixtures (AF)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -531,7 +531,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "68e14f32-af02-4d39-8295-300d94c6f79c",
+  "versionId": "0b004384-be36-4baa-ad7c-c7c12d09d6d6",
   "meta": {
     "templateCredsSetupCompleted": true
   },

@@ -1,10 +1,15 @@
-// API-Football (RapidAPI) yanıtını leagues/teams/fixtures'a böl
+// API-Football (RapidAPI / api-sports.io) yanıtını leagues/teams/fixtures'a böl
 // ID çakışmasını önlemek için 100_000_000 offset
+// Birden çok input item gelebilir (multi-day backfill) — hepsinin response'unu birleştir
 const OFFSET = 100000000;
-const items = ($input.first().json && $input.first().json.response) || [];
+const items = [];
+for (const inp of $input.all()) {
+  const r = (inp.json && inp.json.response) || [];
+  for (const x of r) items.push(x);
+}
 const leaguesMap = new Map();
 const teamsMap = new Map();
-const fixtures = [];
+const fixturesMap = new Map();   // id ile dedupe (multi-day çağrıda aynı fixture tekrar gelebilir)
 
 const statusMap = {
   TBD: 'SCHEDULED', NS: 'SCHEDULED',
@@ -55,7 +60,7 @@ for (const it of items) {
   }
 
   const sCode = (f.status && f.status.short) || 'NS';
-  fixtures.push({
+  fixturesMap.set(fid, {
     id: fid,
     league_id: lid,
     season: l.season || null,
@@ -71,6 +76,7 @@ for (const it of items) {
   });
 }
 
+const fixtures = Array.from(fixturesMap.values());
 return [{ json: {
   leagues: Array.from(leaguesMap.values()),
   teams: Array.from(teamsMap.values()),

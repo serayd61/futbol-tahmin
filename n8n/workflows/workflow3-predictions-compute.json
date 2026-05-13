@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "ce558582-6cd7-4600-9130-ef328e155e03",
+      "id": "b28ad495-ca49-4bb9-af6b-076209692a0b",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
           ]
         }
       },
-      "id": "95512dd2-f2f9-46f4-af48-7e810215bc6a",
+      "id": "dac59f39-a3e0-4aea-a708-e44f3d2636c4",
       "name": "Schedule 05:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -53,7 +53,7 @@
           "timeout": 30000
         }
       },
-      "id": "9e2036e7-f274-48d5-b1ad-3b3935da6dc6",
+      "id": "5e2e2168-7eeb-4c72-892d-38765951eb35",
       "name": "Get Upcoming Fixtures",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -83,7 +83,7 @@
           "timeout": 30000
         }
       },
-      "id": "32f172e9-9294-4aab-a679-24950a471044",
+      "id": "15eee933-7976-459f-8770-8476cec6810e",
       "name": "Get Team Stats",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -94,9 +94,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Poisson tahmin motoru\n// Girdi 1: 'Get Upcoming Fixtures' düğümünden — gelecek SCHEDULED maçlar (array)\n// Girdi 2: 'Get Team Stats' düğümünden — tüm team_stats (array)\n\n// Aynı sorun: array açılmış olabilir (N item) veya tek item olabilir\nfunction readAll(nodeName) {\n  const items = $(nodeName).all();\n  if (items.length === 1 && Array.isArray(items[0].json)) return items[0].json;\n  return items.map(i => i.json);\n}\nconst fixtures  = readAll('Get Upcoming Fixtures');\nconst teamStats = readAll('Get Team Stats');\n\nconst statsMap = new Map(teamStats.map(s => [s.team_id, s]));\n\n// Lig başına ortalamalar (normalizasyon için)\nconst leagueAggs = new Map();\nfor (const s of teamStats) {\n  if (!leagueAggs.has(s.league_id)) leagueAggs.set(s.league_id, { scored: 0, conceded: 0, count: 0 });\n  const a = leagueAggs.get(s.league_id);\n  a.scored   += Number(s.goals_scored_avg)   || 0;\n  a.conceded += Number(s.goals_conceded_avg) || 0;\n  a.count++;\n}\n\nconst factorial = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };\nconst poisson   = (k, lam) => Math.exp(-lam) * Math.pow(lam, k) / factorial(k);\n\nconst formPts = form => {\n  if (!form) return 2.5;\n  let pts = 0;\n  for (const c of form) pts += (c === 'W' ? 1 : c === 'D' ? 0.5 : 0);\n  return pts;\n};\n\nconst out = [];\nconst now = new Date().toISOString();\n\nfor (const m of fixtures) {\n  const h = statsMap.get(m.home_team_id);\n  const a = statsMap.get(m.away_team_id);\n  if (!h || !a) continue;\n\n  const agg = leagueAggs.get(m.league_id);\n  if (!agg || agg.count === 0) continue;\n  const leagueAvg = agg.scored / agg.count;\n  if (leagueAvg <= 0) continue;\n\n  const homeAttack  = (Number(h.home_scored_avg)   || 0) / leagueAvg;\n  const homeDefense = (Number(h.home_conceded_avg) || 0) / leagueAvg;\n  const awayAttack  = (Number(a.away_scored_avg)   || 0) / leagueAvg;\n  const awayDefense = (Number(a.away_conceded_avg) || 0) / leagueAvg;\n\n  let xgH = homeAttack * awayDefense * leagueAvg;\n  let xgA = awayAttack * homeDefense * leagueAvg;\n\n  // Form çarpanı (0.85 .. 1.15 arası)\n  xgH *= 0.85 + 0.06 * formPts(h.form);\n  xgA *= 0.85 + 0.06 * formPts(a.form);\n\n  // Güvenlik klempleri\n  xgH = Math.min(Math.max(xgH, 0.1), 5);\n  xgA = Math.min(Math.max(xgA, 0.1), 5);\n\n  // 0..6 gol için olasılık matrisi\n  const N = 7;\n  const ph = [], pa = [];\n  for (let k = 0; k < N; k++) { ph.push(poisson(k, xgH)); pa.push(poisson(k, xgA)); }\n\n  let pHome = 0, pDraw = 0, pAway = 0, pOver = 0;\n  let bestP = -1, bestH = 0, bestA = 0;\n  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {\n    const p = ph[i] * pa[j];\n    if (i > j) pHome += p;\n    else if (i < j) pAway += p;\n    else pDraw += p;\n    if (i + j >= 3) pOver += p;\n    if (p > bestP) { bestP = p; bestH = i; bestA = j; }\n  }\n\n  const sum = pHome + pDraw + pAway || 1;\n  pHome /= sum; pDraw /= sum; pAway /= sum;\n\n  const top = Math.max(pHome, pDraw, pAway);\n  const confidence = top >= 0.55 ? 'high' : top >= 0.45 ? 'medium' : 'low';\n\n  out.push({\n    fixture_id: m.id,\n    prob_home_win:       +pHome.toFixed(3),\n    prob_draw:           +pDraw.toFixed(3),\n    prob_away_win:       +pAway.toFixed(3),\n    predicted_score:     bestH + '-' + bestA,\n    expected_goals_home: +xgH.toFixed(2),\n    expected_goals_away: +xgA.toFixed(2),\n    prob_over_25:        +pOver.toFixed(3),\n    prob_under_25:       +(1 - pOver).toFixed(3),\n    confidence,\n    model_version: 'poisson-v1',\n    computed_at: now\n  });\n}\n\nreturn [{ json: { predictions: out, count: out.length } }];\n"
+        "jsCode": "// Poisson v2 — kalibrasyonu iyileştirilmiş tahmin motoru\n// Değişiklikler v1'e göre:\n//  • Bayesian shrinkage: az veri olan takımları lig ortalamasına çek\n//  • Form weight yumuşatıldı: 0.92..1.05 (eski: 0.85..1.15)\n//  • xG aralığı daraltıldı: 0.3..3.5 (eski: 0.1..5.0)\n//  • Confidence sıkılaştı: high ≥ 0.60, az veriyse her zaman low\n\nfunction readAll(nodeName) {\n  const items = $(nodeName).all();\n  if (items.length === 1 && Array.isArray(items[0].json)) return items[0].json;\n  return items.map(i => i.json);\n}\n\nconst fixtures     = readAll('Get Upcoming Fixtures');\nconst teamStatsRaw = readAll('Get Team Stats');\n\n// Aggregate node varsa bazen { data: [...] } sarmasıyla gelir\nconst teamStats = teamStatsRaw.flatMap(s => {\n  if (s && Array.isArray(s.data)) return s.data;\n  return [s];\n});\n\nconst statsMap = new Map(teamStats.map(s => [s.team_id, s]));\n\n// Lig başına ortalamalar\nconst leagueAggs = new Map();\nfor (const s of teamStats) {\n  if (!leagueAggs.has(s.league_id)) leagueAggs.set(s.league_id, { scored: 0, conceded: 0, count: 0 });\n  const a = leagueAggs.get(s.league_id);\n  a.scored   += Number(s.goals_scored_avg)   || 0;\n  a.conceded += Number(s.goals_conceded_avg) || 0;\n  a.count++;\n}\n\nconst factorial = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };\nconst poisson   = (k, lam) => Math.exp(-lam) * Math.pow(lam, k) / factorial(k);\n\nconst formPts = form => {\n  if (!form) return 2.5;\n  let pts = 0;\n  for (const c of form) pts += (c === 'W' ? 1 : c === 'D' ? 0.5 : 0);\n  return pts;\n};\n\n// V2 — Bayesian shrinkage parametreleri\nconst SHRINKAGE = 6;          // ~6 maç sonra observed weight > league avg weight\nconst FORM_BASE = 0.92;       // V1: 0.85\nconst FORM_SLOPE = 0.025;     // V1: 0.06\nconst XG_MIN = 0.3;           // V1: 0.1\nconst XG_MAX = 3.5;           // V1: 5.0\nconst CONF_HIGH = 0.60;       // V1: 0.55\nconst CONF_MED  = 0.45;       // V1 ile aynı\nconst MIN_MATCHES_FOR_HIGH = 5; // 5'ten az maç oynamış takımı hiç \"high\" diye etiketleme\n\nconst out = [];\nconst now = new Date().toISOString();\n\nfor (const m of fixtures) {\n  const h = statsMap.get(m.home_team_id);\n  const a = statsMap.get(m.away_team_id);\n  if (!h || !a) continue;\n\n  const agg = leagueAggs.get(m.league_id);\n  if (!agg || agg.count === 0) continue;\n  const leagueAvg = agg.scored / agg.count;\n  if (leagueAvg <= 0) continue;\n\n  // V1 multiplicative xG\n  const homeAttack  = (Number(h.home_scored_avg)   || 0) / leagueAvg;\n  const homeDefense = (Number(h.home_conceded_avg) || 0) / leagueAvg;\n  const awayAttack  = (Number(a.away_scored_avg)   || 0) / leagueAvg;\n  const awayDefense = (Number(a.away_conceded_avg) || 0) / leagueAvg;\n\n  let xgH_raw = homeAttack * awayDefense * leagueAvg;\n  let xgA_raw = awayAttack * homeDefense * leagueAvg;\n\n  // V2 — Bayesian shrinkage: az veri → lig ortalamasına yaklaş\n  const hMatches = Number(h.matches_played) || 0;\n  const aMatches = Number(a.matches_played) || 0;\n  const minMatches = Math.min(hMatches, aMatches);\n\n  const shrinkH = hMatches / (hMatches + SHRINKAGE);\n  const shrinkA = aMatches / (aMatches + SHRINKAGE);\n\n  let xgH = shrinkH * xgH_raw + (1 - shrinkH) * leagueAvg;\n  let xgA = shrinkA * xgA_raw + (1 - shrinkA) * leagueAvg;\n\n  // V2 — yumuşatılmış form weight\n  xgH *= FORM_BASE + FORM_SLOPE * formPts(h.form);\n  xgA *= FORM_BASE + FORM_SLOPE * formPts(a.form);\n\n  // V2 — sıkılaştırılmış clamp\n  xgH = Math.min(Math.max(xgH, XG_MIN), XG_MAX);\n  xgA = Math.min(Math.max(xgA, XG_MIN), XG_MAX);\n\n  // 0..6 gol için olasılık matrisi\n  const N = 7;\n  const ph = [], pa = [];\n  for (let k = 0; k < N; k++) { ph.push(poisson(k, xgH)); pa.push(poisson(k, xgA)); }\n\n  let pHome = 0, pDraw = 0, pAway = 0, pOver = 0;\n  let bestP = -1, bestH = 0, bestA = 0;\n  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {\n    const p = ph[i] * pa[j];\n    if (i > j) pHome += p;\n    else if (i < j) pAway += p;\n    else pDraw += p;\n    if (i + j >= 3) pOver += p;\n    if (p > bestP) { bestP = p; bestH = i; bestA = j; }\n  }\n  const sum = pHome + pDraw + pAway || 1;\n  pHome /= sum; pDraw /= sum; pAway /= sum;\n\n  // V2 — confidence sıkılaştı + az veri penaltisi\n  const top = Math.max(pHome, pDraw, pAway);\n  let confidence;\n  if (minMatches < MIN_MATCHES_FOR_HIGH) {\n    confidence = 'low';                     // az veri → asla \"high\" deme\n  } else if (top >= CONF_HIGH) {\n    confidence = 'high';\n  } else if (top >= CONF_MED) {\n    confidence = 'medium';\n  } else {\n    confidence = 'low';\n  }\n\n  out.push({\n    fixture_id: m.id,\n    prob_home_win:       +pHome.toFixed(3),\n    prob_draw:           +pDraw.toFixed(3),\n    prob_away_win:       +pAway.toFixed(3),\n    predicted_score:     bestH + '-' + bestA,\n    expected_goals_home: +xgH.toFixed(2),\n    expected_goals_away: +xgA.toFixed(2),\n    prob_over_25:        +pOver.toFixed(3),\n    prob_under_25:       +(1 - pOver).toFixed(3),\n    confidence,\n    model_version: 'poisson-v2',\n    computed_at: now,\n  });\n}\n\nreturn [{ json: { predictions: out, count: out.length } }];\n"
       },
-      "id": "a34b0b3e-cb2d-486d-9fa8-9823311d8913",
+      "id": "6e1aaae7-a4fc-40ee-a893-18cc004f6d7b",
       "name": "Poisson Predict",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -137,7 +137,7 @@
           "timeout": 30000
         }
       },
-      "id": "a485cffa-e8c9-4c6a-9b1a-1bac50425bc2",
+      "id": "395cafca-2dbc-4512-8d2b-22ba31a61b9f",
       "name": "Upsert Predictions",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -209,7 +209,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "578bbfbf-2128-4bcc-9654-78c45af8f41a",
+  "versionId": "a267235d-d530-4cef-94b5-5edefb776066",
   "meta": {
     "templateCredsSetupCompleted": true
   },

@@ -1,0 +1,282 @@
+{
+  "name": "4 — af-backfill (one-time)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "452677a4-69e4-445b-b377-588e0a38e0d0",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Son 30 gün için ayrı tarih item'ları üret (api-sports.io single-date endpoint için)\nconst today = new Date();\nconst items = [];\nfor (let i = 30; i >= 1; i--) {\n  const d = new Date(today.getTime() - i * 86400000);\n  items.push({ json: { date: d.toISOString().slice(0, 10) } });\n}\nreturn items;\n"
+      },
+      "id": "cd231226-895d-4400-a03f-9ed1a1d6317d",
+      "name": "Date Array (30d)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://v3.football.api-sports.io/fixtures",
+        "options": {
+          "timeout": 30000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apisports-key",
+              "value": "={{ $env.APIFOOTBALL_DIRECT_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "c7e5020a-3d33-43c4-a936-ba4585e27893",
+      "name": "Get AF Daily Fixtures",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// API-Football (RapidAPI / api-sports.io) yanıtını leagues/teams/fixtures'a böl\n// ID çakışmasını önlemek için 100_000_000 offset\n// Birden çok input item gelebilir (multi-day backfill) — hepsinin response'unu birleştir\nconst OFFSET = 100000000;\nconst items = [];\nfor (const inp of $input.all()) {\n  const r = (inp.json && inp.json.response) || [];\n  for (const x of r) items.push(x);\n}\nconst leaguesMap = new Map();\nconst teamsMap = new Map();\nconst fixturesMap = new Map();   // id ile dedupe (multi-day çağrıda aynı fixture tekrar gelebilir)\n\nconst statusMap = {\n  TBD: 'SCHEDULED', NS: 'SCHEDULED',\n  '1H': 'LIVE', HT: 'LIVE', '2H': 'LIVE', ET: 'LIVE', BT: 'LIVE', P: 'LIVE', LIVE: 'LIVE', INT: 'LIVE',\n  FT: 'FINISHED', AET: 'FINISHED', PEN: 'FINISHED', AWD: 'FINISHED', WO: 'FINISHED',\n  PST: 'POSTPONED', CANC: 'POSTPONED', ABD: 'POSTPONED', SUSP: 'POSTPONED'\n};\n\nconst now = new Date().toISOString();\n\nfor (const it of items) {\n  const f = it.fixture || {};\n  const l = it.league || {};\n  const home = (it.teams && it.teams.home) || {};\n  const away = (it.teams && it.teams.away) || {};\n  const goals = it.goals || {};\n  if (!f.id || !l.id || !home.id || !away.id) continue;\n\n  const lid = l.id + OFFSET;\n  const hid = home.id + OFFSET;\n  const aid = away.id + OFFSET;\n  const fid = f.id + OFFSET;\n\n  if (!leaguesMap.has(lid)) {\n    leaguesMap.set(lid, {\n      id: lid,\n      name: l.name,\n      country: l.country || null,\n      logo: l.logo || null,\n      season: l.season || null,\n      source: 'api-football',\n      updated_at: now\n    });\n  }\n\n  for (const [t, id] of [[home, hid], [away, aid]]) {\n    if (!teamsMap.has(id)) {\n      teamsMap.set(id, {\n        id: id,\n        name: t.name,\n        short_name: null,\n        logo: t.logo || null,\n        country: l.country || null,\n        league_id: lid,\n        updated_at: now\n      });\n    }\n  }\n\n  const sCode = (f.status && f.status.short) || 'NS';\n  fixturesMap.set(fid, {\n    id: fid,\n    league_id: lid,\n    season: l.season || null,\n    utc_date: f.date,\n    status: statusMap[sCode] || 'SCHEDULED',\n    home_team_id: hid,\n    away_team_id: aid,\n    home_goals: (goals.home === undefined ? null : goals.home),\n    away_goals: (goals.away === undefined ? null : goals.away),\n    venue: (f.venue && f.venue.name) || null,\n    source: 'api-football',\n    updated_at: now\n  });\n}\n\nconst fixtures = Array.from(fixturesMap.values());\nreturn [{ json: {\n  leagues: Array.from(leaguesMap.values()),\n  teams: Array.from(teamsMap.values()),\n  fixtures: fixtures,\n  count: fixtures.length\n}}];\n"
+      },
+      "id": "81dad2ca-d078-4e2b-95a6-fa5a4a65cad8",
+      "name": "Transform AF Multi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leagues",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.leagues }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "dec87ba1-49c1-4553-9765-090aa2b36cad",
+      "name": "Upsert Leagues (AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/teams",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Transform AF Multi').first().json.teams }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "deb71909-6210-429e-bcc2-73d91260b22e",
+      "name": "Upsert Teams (AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/fixtures",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Transform AF Multi').first().json.fixtures }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "55023055-783a-4ad6-b1ed-04914d453862",
+      "name": "Upsert Fixtures (AF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Date Array (30d)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date Array (30d)": {
+      "main": [
+        [
+          {
+            "node": "Get AF Daily Fixtures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get AF Daily Fixtures": {
+      "main": [
+        [
+          {
+            "node": "Transform AF Multi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform AF Multi": {
+      "main": [
+        [
+          {
+            "node": "Upsert Leagues (AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Leagues (AF)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Teams (AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Teams (AF)": {
+      "main": [
+        [
+          {
+            "node": "Upsert Fixtures (AF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "edeb0218-a8ab-46ec-8536-0425c63d5cb7",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "futbol-tahmin"
+    }
+  ]
+}

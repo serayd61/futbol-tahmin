@@ -1,0 +1,262 @@
+{
+  "name": "8 — push-notifications",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "5975eba3-e196-43bc-ab51-260decfdbdb0",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "bb90dbe7-0349-4745-a440-17c9ff1ef25a",
+      "name": "Schedule */15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst end = new Date(now.getTime() + 75 * 60 * 1000);\nreturn [{ json: { start: now.toISOString(), end: end.toISOString() }}];\n"
+      },
+      "id": "fb143c89-ed2d-470f-a502-f4fb9882fe35",
+      "name": "Compute Time Window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/fixtures",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id,home_team_id,away_team_id,utc_date,status,home_team:teams!home_team_id(name),away_team:teams!away_team_id(name)"
+            },
+            {
+              "name": "status",
+              "value": "eq.SCHEDULED"
+            },
+            {
+              "name": "utc_date",
+              "value": "=gte.{{ $json.start }}"
+            },
+            {
+              "name": "utc_date",
+              "value": "=lte.{{ $json.end }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "4aea1fe1-a253-4579-9074-90d01c39c367",
+      "name": "Get Upcoming Fixtures (1h)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/push_tokens?select=token,favorite_teams,enabled&enabled=eq.true&limit=5000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "54326475-3722-4f52-a989-da03490eb978",
+      "name": "Get Push Tokens",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expo Push Sender — yaklaşık 1 saat içinde başlayacak maçlar için\n// favori takımı olan kullanıcılara push gönderir.\n//\n// Akış:\n//   1) Supabase'den önümüzdeki 50-70 dk içinde başlayan SCHEDULED maçları çek\n//   2) push_tokens'tan enabled=true olanları, favori takımları maçlardakilerle eşleştir\n//   3) Her eşleşme için Expo Push API'sine bildirim gönder\n//\n// Not: Expo Push API tek bir POST'la 100'e kadar bildirimi batch alır.\n\nconst items = $input.all();\nlet rows = [];\nif (items.length === 1 && Array.isArray(items[0].json?.data)) {\n  rows = items[0].json.data;\n} else if (items.length === 1 && Array.isArray(items[0].json)) {\n  rows = items[0].json;\n} else {\n  rows = items.map(i => i.json);\n}\n\n// Aggregate sonrası gelen \"data\" iki ayrı sorguyu birleştirir:\n// data: [{fixtures: [...]}, {push_tokens: [...]}] gibi gelmez genelde — her query ayrı\n// Bu workflow yapısında: önce maçları sonra tokenları sırayla çekiyoruz.\n// Build Push Messages sadece maçları görüyor, token'ları $('Get Tokens') ile alır.\n\nconst fixtures = $('Get Upcoming Fixtures (1h)').all().flatMap(i => {\n  const j = i.json;\n  if (Array.isArray(j)) return j;\n  if (Array.isArray(j?.data)) return j.data;\n  return [j];\n});\n\nconst tokens = $('Get Push Tokens').all().flatMap(i => {\n  const j = i.json;\n  if (Array.isArray(j)) return j;\n  if (Array.isArray(j?.data)) return j.data;\n  return [j];\n});\n\nif (fixtures.length === 0 || tokens.length === 0) {\n  return [{ json: { messages: [], reason: 'no fixtures or tokens' } }];\n}\n\n// Zaman penceresi — PostgREST'te aynı isimli iki query param duplicate olduğunda\n// sadece sonuncusu uygulanıyor. Burda kesin filter uygula: şimdi - 5 dk ... şimdi + 75 dk\nconst nowMs = Date.now();\nconst windowStart = nowMs - 5 * 60 * 1000;\nconst windowEnd = nowMs + 75 * 60 * 1000;\nconst upcoming = fixtures.filter(f => {\n  if (!f.utc_date) return false;\n  const t = new Date(f.utc_date).getTime();\n  return t >= windowStart && t <= windowEnd;\n});\n\nif (upcoming.length === 0) {\n  return [{ json: { messages: [], reason: 'no upcoming fixtures in 75min window', total_fixtures: fixtures.length } }];\n}\n\n// Team isim cache için minimal lookup — fixtures içinde nested gelirse onu kullan\nconst teamNameById = new Map();\nfor (const f of upcoming) {\n  if (f.home_team?.name) teamNameById.set(f.home_team_id, f.home_team.name);\n  if (f.away_team?.name) teamNameById.set(f.away_team_id, f.away_team.name);\n}\n\n// Expo Push Message array\nconst messages = [];\n\nfor (const t of tokens) {\n  if (!t.enabled) continue;\n  const favs = Array.isArray(t.favorite_teams) ? t.favorite_teams : [];\n  if (favs.length === 0) continue;\n\n  // Bu kullanıcının favorisinin olduğu maçları bul\n  for (const f of upcoming) {\n    const inFav = favs.includes(f.home_team_id) || favs.includes(f.away_team_id);\n    if (!inFav) continue;\n\n    const home = teamNameById.get(f.home_team_id) || 'Ev sahibi';\n    const away = teamNameById.get(f.away_team_id) || 'Deplasman';\n    const minutes = Math.round(\n      (new Date(f.utc_date).getTime() - Date.now()) / 60000\n    );\n    const minLabel = minutes < 0 ? 'birazdan' : `${minutes} dakika içinde`;\n\n    messages.push({\n      to: t.token,\n      sound: 'default',\n      title: `${home} — ${away}`,\n      body: `Maç ${minLabel} başlıyor. Tahminleri kontrol et!`,\n      data: { fixture_id: f.id },\n      priority: 'high',\n    });\n  }\n}\n\nreturn [{ json: { messages, count: messages.length } }];\n"
+      },
+      "id": "1d607de6-9524-48bb-8b4a-23d8123db0e4",
+      "name": "Build Push Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://exp.host/--/api/v2/push/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.messages }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "03c1fe84-7459-4a74-877f-1c43d352dc34",
+      "name": "Expo Push Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        280
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Compute Time Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule */15 min": {
+      "main": [
+        [
+          {
+            "node": "Compute Time Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Time Window": {
+      "main": [
+        [
+          {
+            "node": "Get Upcoming Fixtures (1h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Upcoming Fixtures (1h)": {
+      "main": [
+        [
+          {
+            "node": "Get Push Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Push Tokens": {
+      "main": [
+        [
+          {
+            "node": "Build Push Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Push Messages": {
+      "main": [
+        [
+          {
+            "node": "Expo Push Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "62f019d1-da1f-46f3-a56c-5da67e831a34",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "futbol-tahmin"
+    }
+  ]
+}
